@@ -3,6 +3,24 @@
 const debug = require('debug')('adodb:connection:utils');
 const strip = require('sql-strip-comments');
 
+// 检测是否为 Node.js 版本 > 10.9.0
+function isNodeGreaterEngin () {
+    const currentVersion = process.version.replace(/^v/, '');
+    const [major, minor] = currentVersion.split('.').map(Number);
+    return (major > 10) || (major === 10 && minor > 9);
+}
+
+// 根据 Node 版本返回合适的换行符
+// Node.js 13.x 在 Windows 上与 cscript.exe 通信必须使用 \r\n
+function charEndingSuffix () {
+    return isNodeGreaterEngin() ? '\r\n' : '\n';
+}
+
+// 为字符串添加换行符后缀
+function addCharEndingSuffix (str) {
+    return `${str}${charEndingSuffix()}`;
+}
+
 //http://shamansir.github.io/JavaScript-Garden/#types.typeof
 function is(type, obj) {
     let clas = Object.prototype.toString.call(obj).slice(8, -1);
@@ -87,4 +105,9 @@ function queryFormat (sql, values) {
     });
 }
 
-module.exports = {queryFormat: queryFormat};
+module.exports = {
+    queryFormat: queryFormat,
+    isNodeGreaterEngin: isNodeGreaterEngin,
+    charEndingSuffix: charEndingSuffix,
+    addCharEndingSuffix: addCharEndingSuffix
+};

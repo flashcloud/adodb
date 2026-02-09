@@ -12,7 +12,9 @@ const getProvider = require('../provider');
 const parseField = require('./speedup/parseField');
 const parseDateFn = require('./speedup/parseDateFn');
 
-const queryFormat = require('./utils').queryFormat;
+const utils = require('./utils');
+const queryFormat = utils.queryFormat;
+const addCharEndingSuffix = utils.addCharEndingSuffix;
 const stripComments = require('sql-strip-comments');
 
 const eventemitter = require('events').EventEmitter;
@@ -194,7 +196,7 @@ Connection.prototype._step = function(line) {
                     self._queryLock = false;
 
                     if (self._fEnding) {
-                        if (self._provider.writable) self._provider.write(self._endString + '\n');
+                        if (self._provider.writable) self._provider.write(addCharEndingSuffix(self._endString));
                         self._fConnected = false;
                     }
                 }
@@ -226,10 +228,10 @@ Connection.prototype._execSQLfromQueue = function() {
 Connection.prototype._sendSQL = function(sql) {
     debug('send sql: %s', sql);
     const self = this;
-    self._provider.write('SQL\n');
+    self._provider.write(addCharEndingSuffix('SQL'));
 
-    self._provider.write(sql + '\n');
-    self._provider.write(self._endString + '\n');
+    self._provider.write(addCharEndingSuffix(sql));
+    self._provider.write(addCharEndingSuffix(self._endString));
 
     self._queryLock = true;
 };
@@ -329,7 +331,7 @@ Connection.prototype.end = function() {
         self._fEnding = true;
         if (self._fConnected) {
             if (self._queryQueue.length === 0 && !self._queryLock) {
-                if (self._provider.writable) self._provider.write(self._endString + '\n');
+                if (self._provider.writable) self._provider.write(addCharEndingSuffix(self._endString));
             }
         }
     });
@@ -373,7 +375,8 @@ Connection.prototype.connect = function(callback) {
 
             self._rlStream = readline
                 .createInterface({
-                    input: self._provider
+                    input: self._provider,
+                    crlfDelay: Infinity  // 关键：处理 \r\n 为单个换行
                 })
                 .on('line', line => {
                     self._readLine(line);

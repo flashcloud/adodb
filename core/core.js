@@ -43,24 +43,31 @@ function Core(connString, endString) {
 
     self.spawn = function(callback) {
         debug('spawning %s, %s; connString: %s, endString: %s', cscriptPath, script, connString, endString);
-
-        coreProc = spawn(cscriptPath, [script, '//E:JScript', '//Nologo', connString, endString]);
-
+    
+        coreProc = spawn(cscriptPath, ['//E:JScript', '//Nologo', script, connString, endString], {
+            windowsHide: true,
+            stdio: ['pipe', 'pipe', 'pipe']
+        });
+    
         self.stdout = coreProc.stdout;
         self.stdin = coreProc.stdin;
         self.stderr = coreProc.stderr;
-
+    
         coreProc.on('error', err => {
             debug('error: %s', err.message);
             self.emit('error', err);
         });
-
+    
         coreProc.on('close', (code, signal) => {
             debug('close, code: %s, signal: %s', code, signal);
             self.emit('close', code, signal);
         });
-
-        callback(null, self);
+    
+        // Critical fix for Node.js 13.x: delay callback to next tick
+        // This ensures provider can set up listeners before any data arrives
+        process.nextTick(() => {
+            callback(null, self);
+        });
     };
 
     self.kill = function() {

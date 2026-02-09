@@ -1,32 +1,73 @@
-json3();
+// Global error handling for initialization
+try {
+    json3();
 
-var connStr = WScript.Arguments(0);
-WScript.StdOut.WriteLine('connStr: ' + connStr);
-var endStr = WScript.Arguments(1);
-WScript.StdOut.WriteLine('endStr: ' + endStr);
+    var connStr = WScript.Arguments(0);
+    WScript.StdOut.WriteLine('connStr: ' + connStr);
+    var endStr = WScript.Arguments(1);
+    WScript.StdOut.WriteLine('endStr: ' + endStr);
+} catch (err) {
+    WScript.StdErr.WriteLine('INIT ERROR: ' + err.message);
+    WScript.Quit(1);
+}
 
 var columnDelimiter = '\t';
 var rowDelimiter = '\n';
 
 var connection = new ActiveXObject('ADODB.Connection');
 
-init();
-starting();
+try {
+    init();
+    starting();
+} catch (err) {
+    WScript.StdErr.WriteLine('STARTUP ERROR: ' + err.message);
+    if (err.description) {
+        WScript.StdErr.WriteLine('Description: ' + err.description);
+    }
+    WScript.Quit(1);
+}
 
 var inStr, buf='';
 var fEnd = false;
+var idleCount = 0;
+var MAX_IDLE_COUNT = 100;
+
 while (!fEnd) {
-    inStr = WScript.StdIn.ReadLine();
-    switch (inStr) {
-        case endStr:
-            fEnd = true;
-            break;
-        case 'SQL':
-            query();
-            break;
+    try {
+        // Critical fix for Node.js 13.x: stdin close causes ReadLine exception
+        // Must check AtEndOfStream first
+        if (WScript.StdIn.AtEndOfStream) {
+            WScript.Sleep(100);
+            idleCount++;
+            
+            // Prevent infinite loop
+            if (idleCount > MAX_IDLE_COUNT) {
+                break;
+            }
+            continue;
+        }
+        
+        idleCount = 0;  // Reset counter
+        inStr = WScript.StdIn.ReadLine();
+        
+        switch (inStr) {
+            case endStr:
+                fEnd = true;
+                break;
+            case 'SQL':
+                query();
+                break;
 
-        default:
+            default:
 
+        }
+    } catch (err) {
+        WScript.StdErr.WriteLine('LOOP ERROR: ' + err.message);
+        // Handle EOF error in Windows 7 + Node 13.x (error code -2147024858)
+        if (err.number === -2147024858) {
+            // EOF detected, exit gracefully
+        }
+        break;
     }
 }
 
@@ -66,14 +107,34 @@ function starting () {
 function query () {
     var inStr, sql = '';
     var fEnd = false;
+    var idleCount = 0;
+    var MAX_IDLE_COUNT = 100;
+    
     while (!fEnd) {
-        inStr = WScript.StdIn.ReadLine();
-        switch (inStr) {
-            case endStr:
-                fEnd = true;
-                break;
-            default:
-                sql += inStr + '\n';
+        try {
+            // Same fix: check AtEndOfStream before ReadLine
+            if (WScript.StdIn.AtEndOfStream) {
+                WScript.Sleep(100);
+                idleCount++;
+                if (idleCount > MAX_IDLE_COUNT) {
+                    WScript.StdErr.WriteLine('QUERY ERROR: Timeout waiting for SQL end marker');
+                    return;
+                }
+                continue;
+            }
+            
+            idleCount = 0;
+            inStr = WScript.StdIn.ReadLine();
+            switch (inStr) {
+                case endStr:
+                    fEnd = true;
+                    break;
+                default:
+                    sql += inStr + '\n';
+            }
+        } catch (err) {
+            WScript.StdErr.WriteLine('QUERY READ ERROR: ' + err.message);
+            return;
         }
     }
 

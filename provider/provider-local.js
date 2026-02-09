@@ -40,6 +40,10 @@ function Provider(options) {
         if (err) return console.error(err.message);
 
         self._core = core;
+        
+        debug('Setting up core event listeners');
+        debug('core.stdout readable: %s', core.stdout.readable);
+        debug('core.stdout listeners: %j', core.stdout.eventNames());
 
         core
             .on('error', err => {
@@ -51,22 +55,31 @@ function Provider(options) {
                 self.emit('close', code, signal);
             });
 
+        debug('Adding stdout readable listener (Node.js 13.x compatibility)');
+        // Critical fix for Node.js 13.x: use 'readable' event instead of 'data'
+        // In Node.js 13.x, streams default to paused mode and only emit 'readable'
         core.stdout
-            .on('data', data => {
-                data = new Buffer(iconv.decode(data, self.codepageANSI), 'utf8');
-                debug('data: %s', data);
-                if (!self.push(data)) {
-                    self._core.stdout.pause();
+            .on('readable', () => {
+                debug('stdout readable event');
+                let chunk;
+                // Read all available data
+                while (null !== (chunk = core.stdout.read())) {
+                    const decoded = iconv.decode(chunk, self.codepageANSI);
+                    const buf = Buffer.from(decoded, 'utf8');
+                    debug('readable: read %d bytes', buf.length);
+                    
+                    if (!self.push(buf)) {
+                        debug('readable: backpressure detected, pausing');
+                        break;  // Stop reading if push returns false (backpressure)
+                    }
                 }
             })
             .on('end', () => {
+                debug('stdout end');
                 self._endStdOut = true;
                 if (self._endStdErr) {
                     self.push(null);
                 }
-            })
-            .on('readable', () => {
-                self.read(0);
             })
             .on('error', err => {
                 console.error('Provider._engine.stdout error', err);
@@ -83,9 +96,9 @@ function Provider(options) {
 
                 debug('stderr end: %s', data.trim());
                 if (data.trim().length > 0) {
-                    self.push(new Buffer(errorString + '\n', 'utf8'));
-                    self.push(new Buffer(data.trim() + '\n', 'utf8'));
-                    self.push(new Buffer(endString + '\n', 'utf8'));
+                    self.push(Buffer.from(errorString + '\n', 'utf8'));
+                    self.push(Buffer.from(data.trim() + '\n', 'utf8'));
+                    self.push(Buffer.from(endString + '\n', 'utf8'));
                 }
                 self._endStdErr = true;
                 if (self._endStdOut) {
@@ -118,14 +131,26 @@ Provider.prototype._write = function(chunk, encoding, done) {
     const self = this;
     debug('write: %s', chunk.toString().trim());
 
-    if (!self._core.stdin.write(iconv.encode(chunk, self.codepageANSI))) {
-        self.cork();
-        self.once('drain', () => {
-            self.uncork();
+    const encoded = iconv.encode(chunk, self.codepageANSI);
+    
+    // Node.js 13.x 关键修复：必须等待 write 回调或 drain 事件
+    const canContinue = self._core.stdin.write(encoded, (err) => {
+        if (err) {
+            debug('stdin write error: %s', err.message);
+        }
+    });
+    
+    if (canContinue) {
+        // 缓冲区未满，使用 setImmediate 确保数据已进入内核
+        setImmediate(done);
+    } else {
+        // 缓冲区满，等待 drain 事件
+        debug('stdin buffer full, waiting for drain');
+        self._core.stdin.once('drain', () => {
+            debug('stdin drained');
+            done();
         });
     }
-
-    done();
 };
 
 Provider.prototype.kill = function() {
