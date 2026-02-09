@@ -54,15 +54,16 @@ const connStr = 'Provider=Microsoft.Jet.OLEDB.4.0;Data Source=Northwind2003.mdb'
 
 const pool = ADODB.createPool(connStr);
 
-pool.query('SELECT * FROM Categories;', (err, data) => {
-    if (err) {
+(async () => {
+    try {
+        const { records } = await pool.query('SELECT * FROM Categories;');
+        console.log(records);
+    } catch (err) {
         console.error(err.message);
-    } else {
-        console.log(data);
+    } finally {
+        pool.end();
     }
-
-    pool.end();
-});
+})();
 ```
 
 ### 客户端-服务器模式
@@ -79,7 +80,7 @@ pool.query('SELECT * FROM Categories;', (err, data) => {
     config file: C:\adodb\adodb-config.json
     opened server on {"address":"::","family":"IPv6","port":4023}
     Ctrl+C
-    ^CЗавершить выполнение пакетного файла [Y(да)/N(нет)]? y
+    ^C完成批处理文件的执行 [Y(是)/N(否)]? y
 ```
 
 当前目录会生成 `adodb-config.json`。
@@ -133,14 +134,15 @@ const connStr = 'Provider=Adodb-server;Host=127.0.0.1;Port=4023'
 
 const pool = ADODB.createPool(connStr);
 
-pool.query('SELECT * FROM Categories;', (err, data) => {
-    if (err) {
+(async () => {
+    try {
+        const { records } = await pool.query('SELECT * FROM Categories;');
+        console.log(records);
+    } catch (err) {
         console.error(err.message);
-    } else {
-        console.log(data);
+    } finally {
+        pool.end();
     }
-
-    pool.end();
-});
+})();
 ```
 
