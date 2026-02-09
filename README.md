@@ -58,6 +58,16 @@ const pool = ADODB.createPool(connStr);
     try {
         const { records } = await pool.query('SELECT * FROM Categories;');
         console.log(records);
+
+        // 执行 INSERT
+        const { records } = await pool.query(
+            'INSERT INTO Categories (CategoryName, Description) VALUES (:name, :desc)',
+            { name: 'Test', desc: 'Test Description' }
+        );
+
+        // 或者执行 UPDATE/DELETE
+        await pool.query('UPDATE Products SET Price = :price WHERE ProductID = :id', { price: 99.99, id: 1 });
+        await pool.query('DELETE FROM Orders WHERE OrderID = :id', { id: 100 });       
     } catch (err) {
         console.error(err.message);
     } finally {
