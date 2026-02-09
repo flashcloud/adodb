@@ -4,6 +4,8 @@ const debug = require('debug')('adodb:provider-remote');
 const config = require('../config');
 const net = require('net');
 
+const iconv = require('iconv-lite');
+
 const { Duplex } = require('stream');
 
 class ProviderRemote extends Duplex {
@@ -64,14 +66,21 @@ class ProviderRemote extends Duplex {
                     debug('socket close, code: %s, signal: %s', code, signal);
                     this.emit('close', code, signal);
                 })
-                .on('data', data => {
-                    //debug('data: %s', data);
-                    if (!this.push(data)) {
-                        this._socket.pause();
-                    }
-                })
                 .on('readable', () => {
-                    this.read(0);
+                    debug('socket readable event');
+                    let chunk;
+                    // Read all available data
+                    while (null !== (chunk = this._socket.read())) {
+                        const decoded = iconv.decode(chunk, this.codepageANSI);
+                        const buf = Buffer.from(decoded, 'utf8');
+                        debug('readable: read %d bytes', buf.length);
+
+                        if (!this.push(buf)) {
+                            debug('readable: backpressure detected, pausing');
+                            //break;  // Stop reading if push returns false (backpressure)
+                            this._socket.pause();
+                        }
+                    }
                 })
                 .on('end', () => {
                     this.push(null);
@@ -95,14 +104,35 @@ class ProviderRemote extends Duplex {
     _write(chunk, encoding, done) {
         debug('_write: %s', chunk.toString().trim());
 
-        if (!this._socket.write(chunk)) {
-            this.cork();
-            this.once('drain', () => {
-                this.uncork();
-            });
-        }
+        const encoded = iconv.encode(chunk, this.codepageANSI);
 
-        done();
+        // Node.js 13.x 关键修复：必须等待 write 回调或 drain 事件
+        const canContinue = this._socket.write(encoded, (err) => {
+            if (err) {
+                debug('socket write error: %s', err.message);
+            }
+        });
+
+        if (canContinue) {
+            // 缓冲区未满，使用 setImmediate 确保数据已进入内核
+            setImmediate(done);
+        } else {
+            // 缓冲区满，等待 drain 事件
+            debug('socket buffer full, waiting for drain');
+            this._socket.once('drain', () => {
+                debug('socket drained');
+                done();
+            });
+        }        
+
+        // if (!this._socket.write(chunk)) {
+        //     this.cork();
+        //     this.once('drain', () => {
+        //         this.uncork();
+        //     });
+        // }
+
+        // done();
     }
 
     kill() {

@@ -22,7 +22,7 @@ stdout、sterr。
 
 ## 系统要求
 
-Windows XP、7、Vista、8、8.1、10，Node.js v.4.x（更高版本未测试，因为它们无法在 Windows XP 上运行），
+Windows XP、7、Vista、8、8.1、10，Node.js v.4.x、v.10.x、v.13.x（更高版本未测试，因为它们无法在 Windows XP/7 上运行），
 Microsoft.Jet.OLEDB.4.0。若以“客户端-服务器”模式使用，本要求仅适用于服务器端。
 客户端不包含 Windows 特有代码。
 
