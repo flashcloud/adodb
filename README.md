@@ -1,60 +1,56 @@
 BETA
 
-## Что это
+## 这是什么
 
-Это Node.js пакет для выполнения SQL-запросов к базам данных MS Access. Предназначен для использования
-на Windows XP и старше. В режиме "клиент-сервер" клиентская часть может использоваться без ограничения операционной
-системы.
+这是一个用于对 MS Access 数据库执行 SQL 查询的 Node.js 包。设计用于 Windows XP 及以上系统。
+在“客户端-服务器”模式下，客户端部分不受操作系统限制。
 
-## Зачем это
+## 为什么需要它
 
-Для подключения из приложений Node.js к базам данных в формате MS Access.
+用于从 Node.js 应用连接 MS Access 格式的数据库。
 
-## Какие есть аналоги?
+## 有哪些类似方案
 
-[node-adodb](https://github.com/nuintun/node-adodb). Идея подключения из Node.js к ADODB.Connection через
-JScript почерпнута оттуда. Настоящий пакет фактически является переделкой node-adodb, c целью добавления новых
-возможностей и устраненния недостатков.
+[node-adodb](https://github.com/nuintun/node-adodb)。从那里借鉴了通过 JScript 连接
+ADODB.Connection 的思路。本包实际上是对 node-adodb 的改造，旨在新增功能并修复缺陷。
 
-## Как это устроено?
+## 工作原理
 
-Node.js запускает (spawn) процесс Windows Script Host для выполнения небольшого JScript, который фактически и выполняет
-SQL-запрос с помощью ADODB.Connection. Данные между процессами передаются через стандартные потоки ввода-вывода: stdin,
-stdout, sterr.
+Node.js 会启动（spawn）Windows Script Host 进程来执行一段短 JScript，
+JScript 使用 ADODB.Connection 实际执行 SQL 查询。进程间通过标准输入输出流传递数据：stdin、
+stdout、sterr。
 
-## Системные требования
+## 系统要求
 
-Windows XP, 7, Vista, 8, 8.1, 10, Node.js v.4.x (более старшие версии Node.js не тестировались, поскольку не работают на Windows XP),
-Microsoft.Jet.OLEDB.4.0. В случае использования пакета в режиме "клиент-сервер" системные требования действительны для
-только серверной части. Клиентская часть не использует специфичный для Windows код.
+Windows XP、7、Vista、8、8.1、10，Node.js v.4.x（更高版本未测试，因为它们无法在 Windows XP 上运行），
+Microsoft.Jet.OLEDB.4.0。若以“客户端-服务器”模式使用，本要求仅适用于服务器端。
+客户端不包含 Windows 特有代码。
 
-## Дополнительные возможности
+## 额外功能
 
-1.  Расширен синтаксис SQL:
-    1.  разрешены комментарии в коде
-    1.  TODO несколько операторов через ";" (multiple statements)
-1.  Работа в режиме клиент-сервер.
-1.  Турбо-режим, т.е. использование Recordset.GetString() вместо Recordset.MoveNext(), что значительно ускоряет выполнение
-    SQL-запросов, особенно с большим количеством столбцов. Применять турбо-режим можно только с оговоркой, что в
-    возвращаемых данных гарантировано отсутствует символ табуляции (символ табуляции используется процедурой
-    Recordset.GetString() для разделения строк и столбцов). TODO Отлючение турбо-режима для применения
-    пакета без оговорок.
-1.  TODO Потоковый (stream) режим возвращения результатов SQL-запроса.
+1.  扩展 SQL 语法：
+    1.  允许代码内注释
+    1.  TODO 支持通过 ";" 的多语句（multiple statements）
+1.  支持客户端-服务器模式。
+1.  Turbo 模式：使用 Recordset.GetString() 代替 Recordset.MoveNext()，显著提升查询速度，
+    尤其是在列数较多时。使用 Turbo 模式的前提是返回数据中保证不包含制表符
+    （Recordset.GetString() 使用制表符分隔行列）。TODO 关闭 Turbo 模式以便无约束使用。
+1.  TODO 以流（stream）方式返回 SQL 查询结果。
 
-## Использование
+## 使用方法
 
-### Обычный (файловый) режим
+### 普通（文件）模式
 
-#### Установка
+#### 安装
     npm install adodb --save
 
-#### Использование
+#### 使用
 ```js
 const ADODB = require('adodb');
 
 const connStr = 'Provider=Microsoft.Jet.OLEDB.4.0;Data Source=Northwind2003.mdb'; 
-// if you have installed server connection string can be like this 
-// const connStr = 'Provider=Adodb-server;Host=127.0.0.1;Port=4023' 
+// if you have installed server connection string can be like this
+// const connStr = 'Provider=Adodb-server;Host=127.0.0.1;Port=4023'
 
 const pool = ADODB.createPool(connStr);
 
@@ -69,11 +65,12 @@ pool.query('SELECT * FROM Categories;', (err, data) => {
 });
 ```
 
-### Клиент-серверный режим
+### 客户端-服务器模式
 
-#### Серверная часть
-##### Установить серверную часть
+#### 服务器端
+##### 安装服务器端
 
+```powershell
     C:\>npm install adodb -g
     C:\>mkdir adodb-config
     C:\>cd adodb-config
@@ -83,18 +80,19 @@ pool.query('SELECT * FROM Categories;', (err, data) => {
     opened server on {"address":"::","family":"IPv6","port":4023}
     Ctrl+C
     ^CЗавершить выполнение пакетного файла [Y(да)/N(нет)]? y
+```
 
-В текущем каталоге будет создан файл `adodb-config.json`.
-Его небходимо отредактировать, указав порт и строку подключения к базе данных MS Access.
-При наличии системной переменной `ADODB_PATH` файл `adodb-config.json` будет создан в каталоге,
-указанном этой системной переменной.
+当前目录会生成 `adodb-config.json`。
+需要编辑该文件，填写端口和 MS Access 数据库连接字符串。
+如果存在系统变量 `ADODB_PATH`，`adodb-config.json` 会在该变量指定目录下创建。
 
-##### Запустить сервер для проверки настроек:
+##### 启动服务器以验证配置：
 
     C:\adodb-config>adodb run
 
-##### Проверить работу сервера
+##### 检查服务器是否正常
 
+```powershell
     C:\>telnet localhost 4023
     connStr: Provider=Microsoft.Jet.OLEDB.4.0;Data Source=Data Source=C:\node487\node_modules\adodb\test\media\Northwind2003.mdb
     endStr: END{6251729b-82fb-4b89-9bf8-d550c78acd3f}
@@ -107,24 +105,31 @@ pool.query('SELECT * FROM Categories;', (err, data) => {
     CTRL+]
     Microsoft Telnet> q
     C:\>
+```
 
-##### Установить сервер как сервис windows
+##### 将服务器安装为 Windows 服务
 
+```powershell
     C:\adodb-config>adodb install
+```
 
-##### Удалить ранее установленный сервис windows
+##### 卸载已安装的 Windows 服务
 
+```powershell
     C:\adodb-config>adodb uninstall
+```
 
-##### Полный список команд
-    
+##### 完整命令列表
+
+```powershell  
     C:\adodb-config>adodb
+```
     
-#### Клиентская часть
+#### 客户端
 ```js
 const ADODB = require('adodb');
 
-const connStr = 'Provider=Adodb-server;Host=127.0.0.1;Port=4023' 
+const connStr = 'Provider=Adodb-server;Host=127.0.0.1;Port=4023'
 
 const pool = ADODB.createPool(connStr);
 
