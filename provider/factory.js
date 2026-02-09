@@ -5,7 +5,7 @@ const ProviderLocal = require('./provider-local');
 const ProviderRemote = require('./provider-remote');
 const parseConnStr = require('./parse-conn-str');
 
-function getProvider(options, callback) {
+async function getProvider(options) {
     debug('getProvider');
 
     debug(options.connString);
@@ -25,21 +25,9 @@ function getProvider(options, callback) {
         provider = new ProviderLocal(options);
     }
 
-    function errorBeforeReadyFn (err) {
-        debug('error');
-        callback(err);
-    }
+    await provider.init();
 
-    provider.once('error', errorBeforeReadyFn);
-
-    provider.once('ready', () => {
-        debug('ready');
-        provider.removeListener('error',errorBeforeReadyFn);
-        callback(null, provider);
-    });
-
+    return provider;
 }
-
-
 
 module.exports = getProvider;

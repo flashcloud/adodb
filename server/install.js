@@ -28,16 +28,16 @@ log.info(env[1].name + '=' + env[1].value);
 console.log(env[1].name + '=' + env[1].value);
 console.log('directory: %s', svc.directory());
 
-svc.on('install', function() {
+svc.on('install', () => {
     console.log('service installed.');
     svc.start();
 });
 
-svc.on('alreadyinstalled', function() {
+svc.on('alreadyinstalled', () => {
     console.log('This service is already installed.');
 });
 
-svc.on('start', function() {
+svc.on('start', () => {
     console.log(svc.name + ' started!');
 });
 

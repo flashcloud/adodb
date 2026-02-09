@@ -3,14 +3,14 @@
 const Connection = require('./connection');
 const Pool = require('./pool');
 
-function Adodb() {
-    this.createConnection = function(connectionString) {
+class Adodb {
+    createConnection(connectionString) {
         return new Connection(connectionString);
-    };
+    }
 
-    this.createPool = function(connectionString) {
+    createPool(connectionString) {
         return new Pool(connectionString);
-    };
+    }
 }
 
 module.exports = new Adodb();

@@ -1,7 +1,7 @@
 'use strict';
 
-// 1) создает экземпляры core не чаще чем minCoreCreationInterval
-// 2) выполняет spawn
+// 1) 创建 core 实例不超过 minCoreCreationInterval 的频率
+// 2) 执行 spawn
 
 const debug = require('debug')('adodb:core:factory');
 const Core = require('./core');
@@ -14,32 +14,35 @@ let lock = false;
 // 2018-03-20: the url is invalid now, so google for kb274211
 let minCoreCreationInterval = config.minCoreCreationInterval;
 
-function getCore(connString, endString, callback) {
+async function getCore(connString, endString) {
     if (lock) {
         debug('waiting');
-        let coreQueryObj = {
-            connString: connString,
-            endString: endString,
-            callback: callback
-        };
-        queue.unshift(coreQueryObj);
-    } else {
-        let core = new Core(connString, endString);
-        core.spawn((err, core) => {
-            if (err) return callback(err);
-
-            lock = true;
-            callback(null, core);
-            setTimeout(() => {
-                debug('end wait');
-                lock = false;
-                if (queue.length > 0) {
-                    let coreQueryObj = queue.pop();
-                    getCore(coreQueryObj.connString, coreQueryObj.endString, coreQueryObj.callback);
-                }
-            }, minCoreCreationInterval);
+        return new Promise((resolve, reject) => {
+            queue.unshift({
+                connString: connString,
+                endString: endString,
+                resolve: resolve,
+                reject: reject
+            });
         });
     }
+
+    const core = new Core(connString, endString);
+    await core.spawn();
+
+    lock = true;
+    setTimeout(() => {
+        debug('end wait');
+        lock = false;
+        if (queue.length > 0) {
+            let coreQueryObj = queue.pop();
+            getCore(coreQueryObj.connString, coreQueryObj.endString)
+                .then(core => coreQueryObj.resolve(core))
+                .catch(err => coreQueryObj.reject(err));
+        }
+    }, minCoreCreationInterval);
+
+    return core;
 }
 
 module.exports = getCore;

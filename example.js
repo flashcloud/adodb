@@ -8,12 +8,13 @@ const ADODB = require('./index');
 
 const pool = ADODB.createPool(connStr);
 
-pool.query('SELECT * FROM Categories;', (err, data) => {
-    if (err) {
+(async () => {
+    try {
+        const { records } = await pool.query('SELECT * FROM Categories;');
+        console.log(records);
+    } catch (err) {
         console.error(err.message);
-    } else {
-        console.log(data);
+    } finally {
+        pool.end();
     }
-
-    pool.end();
-});
+})();

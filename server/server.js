@@ -34,35 +34,34 @@ const unhook_intercept = intercept(
 
 console.log('config file:', configFile);
 
-fs.readFile(configFile, (err, data) => {
+(async () => {
     let options;
-    if (err) {
+
+    try {
+        const data = await fs.promises.readFile(configFile);
+        options = JSON.parse(data);
+    } catch (err) {
         if (err.code !== 'ENOENT') {
             throw err;
         }
-        fs.readFile(path.join(__dirname, '../adodb-config.template.json'), (err, data) => {
-            if (err) throw err;
 
-            options = JSON.parse(data);
-            if (!options.connString) {
-                options.connString =
-                    'Provider=Microsoft.Jet.OLEDB.4.0;Data Source=' +
-                    path.resolve(path.join(__dirname, '../test/media/Northwind2003.mdb')).replace('/', '\\');
-                debug(options.connString);
-            }
-
-            fs.writeFile(configFile, JSON.stringify(options, null, 2), err => {
-                if (err) throw err;
-
-                startServer(options);
-            });
-        });
         debug(err.message);
-    } else {
-        options = JSON.parse(data);
-        startServer(options);
+
+        const templateData = await fs.promises.readFile(path.join(__dirname, '../adodb-config.template.json'));
+        options = JSON.parse(templateData);
+
+        if (!options.connString) {
+            options.connString =
+                'Provider=Microsoft.Jet.OLEDB.4.0;Data Source=' +
+                path.resolve(path.join(__dirname, '../test/media/Northwind2003.mdb')).replace('/', '\\');
+            debug(options.connString);
+        }
+
+        await fs.promises.writeFile(configFile, JSON.stringify(options, null, 2));
     }
-});
+
+    startServer(options);
+})();
 
 function startServer(options) {
     debug('options: %j', options);
@@ -75,19 +74,16 @@ function startServer(options) {
 
             socketCount++;
 
-            // socket.write('Adodb-server works!');
-
             let socketProvider = null;
-            getProvider(
-                {
-                    connString: options.connString,
-                    endString: config.endString,
-                    errorString: config.errorString
-                },
-                (err, provider) => {
-                    if (err) return socket.write(err.message);
+
+            getProvider({
+                connString: options.connString,
+                endString: config.endString,
+                errorString: config.errorString
+            })
+                .then(provider => {
                     if (socket.destroyed) {
-                        // на случай, если создание провайдера помещено в очередь, и произошел обрыв связи
+                        // 防止创建 provider 被放入队列后，连接断开的情况
                         console.log('socket.destroyed', socket.destroyed);
                         provider.kill();
                         return;
@@ -105,8 +101,10 @@ function startServer(options) {
                     socket.pipe(provider);
 
                     socketProvider = provider;
-                }
-            );
+                })
+                .catch(err => {
+                    socket.write(err.message);
+                });
 
             socket.on('data', data => {
                 debug('RECIEVED: %s', data.toString());
@@ -142,4 +140,4 @@ function startServer(options) {
     });
 }
 
-// TODO установку сервера как тут: https://github.com/AndyGrom/node-deploy-server
+// TODO 参考这里安装服务: https://github.com/AndyGrom/node-deploy-server

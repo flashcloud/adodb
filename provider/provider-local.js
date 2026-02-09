@@ -3,44 +3,43 @@
 const debug = require('debug')('adodb:provider-local');
 
 const iconv = require('iconv-lite');
-const util = require('util');
 const getCore = require('../core');
 
-const Duplex = require('stream').Duplex;
+const { Duplex } = require('stream');
 
-util.inherits(Provider, Duplex);
+class ProviderLocal extends Duplex {
+    constructor(options) {
+        if (!(new.target)) {
+            throw new Error("Can't Provide w/o new");
+        }
+        super(options);
 
-function Provider(options) {
-    if (!(this instanceof Provider)) {
-        throw new Error("Can't Provide w/o new");
+        const connString = options.connString;
+        const endString = options.endString;
+        const errorString = options.errorString;
+        const codepageOEM = options.codepageOEM;
+        const codepageANSI = options.codepageANSI;
+
+        console.assert(!!connString && !!endString && !!errorString);
+
+        this.codepageOEM = codepageOEM || 866;
+        this.codepageANSI = codepageANSI || 1251;
+
+        this._connString = connString;
+        this._endString = endString;
+        this._errorString = errorString;
+
+        this._endStdOut = false;
+        this._endStdErr = false;
+
+        this._core = null;
+        this._stderrBuf = [];
     }
-    Duplex.call(this, options);
 
-    const self = this;
+    async init() {
+        const core = await getCore(this._connString, this._endString);
+        this._core = core;
 
-    let connString = options.connString;
-    let endString = options.endString;
-    let errorString = options.errorString;
-    let codepageOEM = options.codepageOEM;
-    let codepageANSI = options.codepageANSI;
-
-    console.assert(!!connString && !!endString && !!errorString);
-
-    self.codepageOEM = codepageOEM || 866;
-    self.codepageANSI = codepageANSI || 1251;
-
-    self._connString = connString;
-    self._endString = endString;
-    self._errorString = errorString;
-
-    self._endStdOut = false;
-    self._endStdErr = false;
-
-    getCore(self._connString, self._endString, (err, core) => {
-        if (err) return console.error(err.message);
-
-        self._core = core;
-        
         debug('Setting up core event listeners');
         debug('core.stdout readable: %s', core.stdout.readable);
         debug('core.stdout listeners: %j', core.stdout.eventNames());
@@ -48,11 +47,11 @@ function Provider(options) {
         core
             .on('error', err => {
                 debug('core error: %s', err.message);
-                self.emit('error', err);
+                this.emit('error', err);
             })
             .on('close', (code, signal) => {
                 debug('core close, code: %s, signal: %s', code, signal);
-                self.emit('close', code, signal);
+                this.emit('close', code, signal);
             });
 
         debug('Adding stdout readable listener (Node.js 13.x compatibility)');
@@ -64,11 +63,11 @@ function Provider(options) {
                 let chunk;
                 // Read all available data
                 while (null !== (chunk = core.stdout.read())) {
-                    const decoded = iconv.decode(chunk, self.codepageANSI);
+                    const decoded = iconv.decode(chunk, this.codepageANSI);
                     const buf = Buffer.from(decoded, 'utf8');
                     debug('readable: read %d bytes', buf.length);
-                    
-                    if (!self.push(buf)) {
+
+                    if (!this.push(buf)) {
                         debug('readable: backpressure detected, pausing');
                         break;  // Stop reading if push returns false (backpressure)
                     }
@@ -76,33 +75,33 @@ function Provider(options) {
             })
             .on('end', () => {
                 debug('stdout end');
-                self._endStdOut = true;
-                if (self._endStdErr) {
-                    self.push(null);
+                this._endStdOut = true;
+                if (this._endStdErr) {
+                    this.push(null);
                 }
             })
             .on('error', err => {
                 console.error('Provider._engine.stdout error', err);
             });
 
-        self._stderrBuf = [];
+        this._stderrBuf = [];
         core.stderr
             .on('data', buf => {
                 debug('stderr: %s', buf.toString().trim());
-                self._stderrBuf.push(buf);
+                this._stderrBuf.push(buf);
             })
             .on('end', () => {
-                let data = iconv.decode(Buffer.concat(self._stderrBuf), self.codepageOEM);
+                let data = iconv.decode(Buffer.concat(this._stderrBuf), this.codepageOEM);
 
                 debug('stderr end: %s', data.trim());
                 if (data.trim().length > 0) {
-                    self.push(Buffer.from(errorString + '\n', 'utf8'));
-                    self.push(Buffer.from(data.trim() + '\n', 'utf8'));
-                    self.push(Buffer.from(endString + '\n', 'utf8'));
+                    this.push(Buffer.from(this._errorString + '\n', 'utf8'));
+                    this.push(Buffer.from(data.trim() + '\n', 'utf8'));
+                    this.push(Buffer.from(this._endString + '\n', 'utf8'));
                 }
-                self._endStdErr = true;
-                if (self._endStdOut) {
-                    self.push(null);
+                this._endStdErr = true;
+                if (this._endStdOut) {
+                    this.push(null);
                 }
             })
             .on('error', err => {
@@ -113,56 +112,53 @@ function Provider(options) {
             console.error('Provider._engine.stdin error', err);
         });
 
-        setImmediate(() => {
-            debug('ready');
-            self.emit('ready');
-        });
-    });
-}
-
-Provider.prototype._read = function() {
-    const self = this;
-
-    self._core.stdout.resume();
-    self._core.stderr.resume();
-};
-
-Provider.prototype._write = function(chunk, encoding, done) {
-    const self = this;
-    debug('write: %s', chunk.toString().trim());
-
-    const encoded = iconv.encode(chunk, self.codepageANSI);
-    
-    // Node.js 13.x 关键修复：必须等待 write 回调或 drain 事件
-    const canContinue = self._core.stdin.write(encoded, (err) => {
-        if (err) {
-            debug('stdin write error: %s', err.message);
-        }
-    });
-    
-    if (canContinue) {
-        // 缓冲区未满，使用 setImmediate 确保数据已进入内核
-        setImmediate(done);
-    } else {
-        // 缓冲区满，等待 drain 事件
-        debug('stdin buffer full, waiting for drain');
-        self._core.stdin.once('drain', () => {
-            debug('stdin drained');
-            done();
+        return new Promise(resolve => {
+            setImmediate(() => {
+                debug('ready');
+                resolve();
+            });
         });
     }
-};
 
-Provider.prototype.kill = function() {
-    const self = this;
-    debug('kill');
-    self._core.kill();
-};
+    _read() {
+        this._core.stdout.resume();
+        this._core.stderr.resume();
+    }
 
-Provider.prototype.killed = function() {
-    const self = this;
-    debug('kill');
-    return self._core.killed();
-};
+    _write(chunk, encoding, done) {
+        debug('write: %s', chunk.toString().trim());
 
-module.exports = Provider;
+        const encoded = iconv.encode(chunk, this.codepageANSI);
+
+        // Node.js 13.x 关键修复：必须等待 write 回调或 drain 事件
+        const canContinue = this._core.stdin.write(encoded, (err) => {
+            if (err) {
+                debug('stdin write error: %s', err.message);
+            }
+        });
+
+        if (canContinue) {
+            // 缓冲区未满，使用 setImmediate 确保数据已进入内核
+            setImmediate(done);
+        } else {
+            // 缓冲区满，等待 drain 事件
+            debug('stdin buffer full, waiting for drain');
+            this._core.stdin.once('drain', () => {
+                debug('stdin drained');
+                done();
+            });
+        }
+    }
+
+    kill() {
+        debug('kill');
+        this._core.kill();
+    }
+
+    killed() {
+        debug('killed');
+        return this._core.killed();
+    }
+}
+
+module.exports = ProviderLocal;

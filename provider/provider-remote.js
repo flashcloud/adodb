@@ -3,118 +3,116 @@
 const debug = require('debug')('adodb:provider-remote');
 const config = require('../config');
 const net = require('net');
-const util = require('util');
 
-const Duplex = require('stream').Duplex;
+const { Duplex } = require('stream');
 
-util.inherits(Provider, Duplex);
+class ProviderRemote extends Duplex {
+    constructor(options) {
+        debug('new ProviderRemote');
+        if (!(new.target)) {
+            throw new Error("Can't Provide w/o new");
+        }
+        super(options);
 
-function Provider(options) {
-    debug('new Provider');
-    if (!(this instanceof Provider)) {
-        throw new Error("Can't Provide w/o new");
+        this._host = options.host;
+        this._port = options.port;
+
+        const endString = options.endString;
+        const errorString = options.errorString;
+        const codepageOEM = options.codepageOEM;
+        const codepageANSI = options.codepageANSI;
+
+        console.assert(!!this._host && !!this._port && !!endString && !!errorString);
+
+        this.codepageOEM = codepageOEM || 866;
+        this.codepageANSI = codepageANSI || 1251;
+
+        this._endString = endString;
+        this._errorString = errorString;
+
+        this._endStdOut = false;
+        this._endStdErr = false;
+
+        this._socket = null;
     }
-    Duplex.call(this, options);
 
-    var self = this;
+    async init() {
+        return new Promise((resolve, reject) => {
+            this._socket = net.createConnection({ host: this._host, port: this._port }, () => {
+                debug('connected to server');
 
-    let host = options.host;
-    let port = options.port;
+                let options = JSON.stringify({
+                    endString: config.endString,
+                    errorString: config.errorString
+                });
 
-    let endString = options.endString;
-    let errorString = options.errorString;
-    let codepageOEM = options.codepageOEM;
-    let codepageANSI = options.codepageANSI;
+                setImmediate(() => {
+                    debug('ready');
+                    resolve();
+                });
+            });
 
-    console.assert(!!host && !!port && !!endString && !!errorString);
+            this._socket
+                .on('error', err => {
+                    debug('socket error: %s', err.message);
+                    this.push(Buffer.from(this._errorString + '\n', 'utf8'));
+                    this.push(Buffer.from(err.message + '\n', 'utf8'));
+                    this.push(Buffer.from(this._endString + '\n', 'utf8'));
+                    this.emit('error', err);
+                })
+                .on('close', (code, signal) => {
+                    debug('socket close, code: %s, signal: %s', code, signal);
+                    this.emit('close', code, signal);
+                })
+                .on('data', data => {
+                    //debug('data: %s', data);
+                    if (!this.push(data)) {
+                        this._socket.pause();
+                    }
+                })
+                .on('readable', () => {
+                    this.read(0);
+                })
+                .on('end', () => {
+                    this.push(null);
+                });
 
-    self.codepageOEM = codepageOEM || 866;
-    self.codepageANSI = codepageANSI || 1251;
-
-    self._endString = endString;
-    self._errorString = errorString;
-
-    self._endStdOut = false;
-    self._endStdErr = false;
-
-    self._socket = net.createConnection({host: host, port: port}, () => {
-        debug('connected to server');
-
-        let options = JSON.stringify({
-            endString: config.endString,
-            errorString: config.errorString
+            this.on('error', err => {
+                debug('ProviderRemote error:', err.message);
+                //console.error(err.stack);
+                this.push(Buffer.from(this._errorString + '\n', 'utf8'));
+                this.push(Buffer.from(err.message + '\n', 'utf8'));
+                this.push(Buffer.from(this._endString + '\n', 'utf8'));
+            });
         });
+    }
 
-        setImmediate(() => {
-            debug('ready');
-            self.emit('ready');
-        });
-    });
+    _read(size) {
+        //debug('_read');
+        this._socket.resume();
+    }
 
-    self._socket
-        .on('error', err => {
-            debug('socket error: %s', err.message);
-            self.push(new Buffer(errorString + '\n', 'utf8'));
-            self.push(new Buffer(err.message + '\n', 'utf8'));
-            self.push(new Buffer(endString + '\n', 'utf8'));
-            self.emit('error', err);
-        })
-        .on('close', (code, signal) => {
-            debug('socket close, code: %s, signal: %s', code, signal);
-            self.emit('close', code, signal);
-        })
-        .on('data', data => {
-            //debug('data: %s', data);
-            if (!self.push(data)) {
-                self._socket.pause();
-            }
-        })
-        .on('readable', () => {
-            self.read(0);
-        })
-        .on('end', () => {
-            self.push(null);
-        });
+    _write(chunk, encoding, done) {
+        debug('_write: %s', chunk.toString().trim());
 
-    self.on('error', err => {
-        debug('ProviderRemote error:', err.message);
-        //console.error(err.stack);
-        self.push(new Buffer(errorString + '\n', 'utf8'));
-        self.push(new Buffer(err.message + '\n', 'utf8'));
-        self.push(new Buffer(endString + '\n', 'utf8'));
-    });
+        if (!this._socket.write(chunk)) {
+            this.cork();
+            this.once('drain', () => {
+                this.uncork();
+            });
+        }
+
+        done();
+    }
+
+    kill() {
+        debug('kill');
+        this._socket.end();
+        this._socket.destroy();
+        this._socket.unref();
+    }
 }
 
-Provider.prototype._read = function(size) {
-    var self = this;
-    //debug('_read');
+module.exports = ProviderRemote;
 
-    self._socket.resume();
-};
-
-Provider.prototype._write = function(chunk, encoding, done) {
-    var self = this;
-    debug('_write: %s', chunk.toString().trim());
-
-    if (!self._socket.write(chunk)) {
-        self.cork();
-        self.once('drain', () => {
-            self.uncork();
-        });
-    }
-
-    done();
-};
-
-Provider.prototype.kill = function() {
-    var self = this;
-    debug('kill');
-
-    self._socket.end();
-    self._socket.destroy();
-    self._socket.unref();
-};
-
-module.exports = Provider;
-
-//TODO Все ошибки передавать через потоки.
+//TODO 所有错误通过流传递

@@ -17,390 +17,362 @@ const queryFormat = utils.queryFormat;
 const addCharEndingSuffix = utils.addCharEndingSuffix;
 const stripComments = require('sql-strip-comments');
 
-const eventemitter = require('events').EventEmitter;
-const util = require('util');
+const EventEmitter = require('events').EventEmitter;
 
 let states = ['ERROR', 'STARTING', 'READY', 'FIELDS', 'RECORDS', 'LOCALS'].reduce((prev, cur) => {
     prev[cur] = cur;
     return prev;
 }, {});
 
-util.inherits(Connection, eventemitter);
+class Record {}
 
-function Connection(connectionString) {
-    if (!(this instanceof Connection)) {
-        throw new Error("Connection w/o new");
-    }
-    eventemitter.call(this);
-
-    this._connStr = connectionString;
-    //this._rlStream = null;
-
-    this._fConnected = false;
-    this._endString = config.endString;
-    this._errorString = config.errorString;
-
-    this._locals = null;
-
-    this._state = states.STARTING;
-    this._lines_arr = [];
-
-    this._fields = null;
-    this._recordsStr = null;
-
-    this._queryLock = false;
-    this._queryQueue = [];
-    this._queryCallback = null;
-    this._querySql = null;
-
-    this._fEnding = false;
-    this._fConnecting = false;
-    this._fReady = false;
-}
-
-function Record() {}
-
-Connection.prototype.isIdle = function() {
-    const self = this;
-
-    return !self._queryLock && self._fConnected;
-};
-
-Connection.prototype._parseRecordsStr = function() {
-    const self = this;
-
-    let fields = self._fields;
-    let values = self._recordsStr.split('\t');
-    values.length = values.length - 1; // last elem always empty
-
-    console.assert(values.length % fields.length === 0);
-
-    let records = [];
-    let parseDateTimeFn = parseDateFn(self._locals.sShortDate, self._locals.sTimeFormat);
-
-    let curValueIndex = 0;
-    while (curValueIndex < values.length) {
-        let record = new Record();
-        for (let fieldIndex = 0; fieldIndex < fields.length; fieldIndex++) {
-            record[fields[fieldIndex]['Name']] = parseField(
-                fields[fieldIndex],
-                values[curValueIndex],
-                self._locals.sDecimal,
-                parseDateTimeFn
-            );
-
-            curValueIndex++;
+class Connection extends EventEmitter {
+    constructor(connectionString) {
+        if (!(new.target)) {
+            throw new Error("Connection w/o new");
         }
-        records.push(record);
+        super();
+
+        this._connStr = connectionString;
+
+        this._fConnected = false;
+        this._endString = config.endString;
+        this._errorString = config.errorString;
+
+        this._locals = null;
+
+        this._state = states.STARTING;
+        this._lines_arr = [];
+
+        this._fields = null;
+        this._recordsStr = null;
+
+        this._queryLock = false;
+        this._queryQueue = [];
+        this._queryCallback = null;
+        this._querySql = null;
+
+        this._fEnding = false;
+        this._fConnecting = false;
+        this._fReady = false;
     }
 
-    self._records = records;
-};
-
-Connection.prototype._setLocals = function(locals) {
-    const self = this;
-
-    self._locals = locals;
-    debug('set locals: %j', self._locals);
-
-    self._provider.codepageANSI = self._locals.ACP;
-    self._provider.codepageOEM = self._locals.OEMCP;
-};
-
-Connection.prototype._setState = function(state) {
-    const self = this;
-    if (self._state !== state) {
-        self._lines_arr.length = 0;
-        self._state = state;
-        debug('set state: %s', self._state);
-    }
-};
-
-Connection.prototype._step = function(line) {
-    const self = this;
-
-    if (line === self._errorString) {
-        self._setState(states.ERROR);
-        return;
+    isIdle() {
+        return !this._queryLock && this._fConnected;
     }
 
-    switch (self._state) {
-        case states.ERROR:
-            if (line === self._endString) {
-                let err = new Error(self._lines_arr.join('\n').trim());
-                if (self._queryCallback) {
-                    self._queryCallback(err);
-                    self._queryCallback = null;
+    _parseRecordsStr() {
+        let fields = this._fields;
+        let values = this._recordsStr.split('\t');
+        values.length = values.length - 1; // last elem always empty
+
+        console.assert(values.length % fields.length === 0);
+
+        let records = [];
+        let parseDateTimeFn = parseDateFn(this._locals.sShortDate, this._locals.sTimeFormat);
+
+        let curValueIndex = 0;
+        while (curValueIndex < values.length) {
+            let record = new Record();
+            for (let fieldIndex = 0; fieldIndex < fields.length; fieldIndex++) {
+                record[fields[fieldIndex]['Name']] = parseField(
+                    fields[fieldIndex],
+                    values[curValueIndex],
+                    this._locals.sDecimal,
+                    parseDateTimeFn
+                );
+
+                curValueIndex++;
+            }
+            records.push(record);
+        }
+
+        this._records = records;
+    }
+
+    _setLocals(locals) {
+        this._locals = locals;
+        debug('set locals: %j', this._locals);
+
+        this._provider.codepageANSI = this._locals.ACP;
+        this._provider.codepageOEM = this._locals.OEMCP;
+    }
+
+    _setState(state) {
+        if (this._state !== state) {
+            this._lines_arr.length = 0;
+            this._state = state;
+            debug('set state: %s', this._state);
+        }
+    }
+
+    _step(line) {
+        if (line === this._errorString) {
+            this._setState(states.ERROR);
+            return;
+        }
+
+        switch (this._state) {
+            case states.ERROR:
+                if (line === this._endString) {
+                    let err = new Error(this._lines_arr.join('\n').trim());
+                    if (this._queryCallback) {
+                        this._queryCallback(err);
+                        this._queryCallback = null;
+                    }
+                    this.destroy();
+
+                    //FIXME непонятно, можно ли убрать
+                    //this.emit('error', err);
+                    return;
                 }
-                self.destroy();
+                break;
+            case states.STARTING:
+                if (line === 'LOCALS') {
+                    this._setState(states.LOCALS);
+                    return;
+                }
+                break;
+            case states.LOCALS:
+                if (line === this._endString) {
+                    this._setLocals(JSON.parse(this._lines_arr.join('\n')));
+
+                    this._fReady = true;
+                    if (this._queryQueue.length > 0) {
+                        this._execSQLfromQueue();
+                        debug('LOCALS this._queryQueue.length: %d', this._queryQueue.length);
+                    }
+
+                    this._setState(states.READY);
+                    return;
+                }
+                break;
+            case states.READY:
+                if (line === states.FIELDS) {
+                    this._setState(states.FIELDS);
+                    return;
+                } else if (line === states.RECORDS) {
+                    this._setState(states.RECORDS);
+                    return;
+                }
+                break;
+            case states.FIELDS:
+                if (line === this._endString) {
+                    this._fields = JSON.parse(this._lines_arr.join('\n'));
+
+                    debug(states.FIELDS + ': %j', this._fields);
+                    this._setState(states.RECORDS);
+                    return;
+                }
+                break;
+            case states.RECORDS:
+                if (line === this._endString) {
+                    this._recordsStr = this._lines_arr.join('\n');
+                    debug(states.RECORDS + ': %s', JSON.stringify(this._recordsStr.split('\t')).slice(0, 1000));
+
+                    this._parseRecordsStr();
+                    // console.log(states.RECORDS + ': parsed: ', this._records);
+                    if (this._queryCallback) {
+                        this._queryCallback(null, this._records, this._fields);
+                        this._records = null;
+                    }
+
+                    if (this._queryQueue.length > 0) {
+                        this._execSQLfromQueue();
+                        debug('RECORDS this._queryQueue.length: %d', this._queryQueue.length);
+                    } else {
+                        this._queryLock = false;
+
+                        if (this._fEnding) {
+                            if (this._provider.writable) this._provider.write(addCharEndingSuffix(this._endString));
+                            this._fConnected = false;
+                        }
+                    }
+                    this._setState(states.READY);
+                    return;
+                }
+                break;
+            default:
+        }
+
+        // 如果行未被处理，则累积到数组中
+        this._lines_arr.push(line);
+    }
+
+    _execSQLfromQueue() {
+        debug('execSQLfromQueue this._queryQueue.length: %d', this._queryQueue.length);
+
+        console.assert(this._queryQueue.length > 0);
+
+        let query = this._queryQueue.pop();
+        this._querySql = query.sql;
+        this._queryCallback = query.callback;
+
+        this._sendSQL(query.sql);
+    }
+
+    _sendSQL(sql) {
+        debug('send sql: %s', sql);
+        this._provider.write(addCharEndingSuffix('SQL'));
+
+        this._provider.write(addCharEndingSuffix(sql));
+        this._provider.write(addCharEndingSuffix(this._endString));
+
+        this._queryLock = true;
+    }
+
+    _readLine(line) {
+        this._step(line);
+
+        debug('line: %s', line.slice(0, 100));
+    }
+
+    async query(sql, values) {
+        debug('query, sql: %s', sql);
+
+        if (sql.slice(-4).toLowerCase() === '.sql') {
+            sql = path.resolve(sql);
+            const sqlText = await fs.promises.readFile(sql, 'utf8');
+            return this.query(sqlText, values);
+        }
+
+        sql = stripComments(sql);
+        sql = queryFormat(sql, values);
+
+        debug('SQL: %s', sql);
+
+        if (this._fEnding) {
+            throw new Error('Ending connection can not query');
+        }
+
+        return new Promise((resolve, reject) => {
+            const callback = (err, records, fields) => {
+                if (err) reject(err);
+                else resolve({ records, fields });
+            };
+
+            if (this._fConnected) {
+                if (this._queryLock || !this._fReady || this._queryQueue.length > 0) {
+                    this._queryQueue.unshift({ sql: sql, callback: callback });
+                    debug('query enqueue, sql: %s, this._queryQueue.length: %d', sql, this._queryQueue.length);
+                } else {
+                    this._querySql = sql;
+                    this._queryCallback = callback;
+
+                    this._sendSQL(sql);
+                }
+            } else {
+                this._queryQueue.unshift({ sql: sql, callback: callback });
+                debug('query enqueue, sql: %s, this._queryQueue.length: %d', sql, this._queryQueue.length);
+
+                if (!this._fConnecting) {
+                    this.connect().catch(err => {
+                        debug('ERROR');
+
+                        //FIXME непонятно, можно ли убрать
+                        //this.destroy();
+                    });
+                }
+            }
+        });
+    }
+
+    destroy() {
+        debug('destroy');
+
+        this.destroyed = true;
+
+        if (this._fConnected || this._fConnecting) {
+            this._provider.kill();
+            this._fConnected = false;
+
+            if (this._queryCallback) {
+                let err = new Error('Connection was destroyed while executing sql: ' + this._querySql);
+                this._queryCallback(err);
+            }
+
+            while (this._queryQueue.length > 0) {
+                let query = this._queryQueue.pop();
+                let err = new Error('Connection was destroyed before execution of sql: ' + query.sql);
+                query.callback(err);
+            }
+        }
+    }
+
+    // gracefully close connection
+    end() {
+        debug('end');
+
+        setImmediate(() => {
+            this._fEnding = true;
+            if (this._fConnected) {
+                if (this._queryQueue.length === 0 && !this._queryLock) {
+                    if (this._provider.writable) this._provider.write(addCharEndingSuffix(this._endString));
+                }
+            }
+        });
+    }
+
+    async connect() {
+        debug('connect');
+
+        this._fConnecting = true;
+
+        const provider = await getProvider({
+            connString: this._connStr,
+            endString: this._endString,
+            errorString: this._errorString
+        });
+
+        debug('getProvider');
+
+        this._provider = provider;
+
+        this._provider
+            .on('error', err => {
+                debug('provider error: %s', err.message);
 
                 //FIXME непонятно, можно ли убрать
-                //self.emit('error', err);
-                return;
-            }
-            break;
-        case states.STARTING:
-            if (line === 'LOCALS') {
-                self._setState(states.LOCALS);
-                return;
-            }
-            break;
-        case states.LOCALS:
-            if (line === self._endString) {
-                self._setLocals(JSON.parse(self._lines_arr.join('\n')));
-
-                self._fReady = true;
-                if (self._queryQueue.length > 0) {
-                    self._execSQLfromQueue();
-                    debug('LOCALS self._queryQueue.length: %d', self._queryQueue.length);
+                //this.emit('error', err);
+            })
+            .on('close', (code, signal) => {
+                debug('provider close, code: %s, signal: %s', code, signal);
+                if (code !== 0 && this._lines_arr.length > 0) {
+                    console.log('stdOut:\n', this._lines_arr.join('n'));
                 }
-
-                self._setState(states.READY);
-                return;
-            }
-            break;
-        case states.READY:
-            if (line === states.FIELDS) {
-                self._setState(states.FIELDS);
-                return;
-            } else if (line === states.RECORDS) {
-                self._setState(states.RECORDS);
-                return;
-            }
-            break;
-        case states.FIELDS:
-            if (line === self._endString) {
-                self._fields = JSON.parse(self._lines_arr.join('\n'));
-
-                debug(states.FIELDS + ': %j', self._fields);
-                self._setState(states.RECORDS);
-                return;
-            }
-            break;
-        case states.RECORDS:
-            if (line === self._endString) {
-                self._recordsStr = self._lines_arr.join('\n');
-                debug(states.RECORDS + ': %s', JSON.stringify(self._recordsStr.split('\t')).slice(0, 1000));
-
-                self._parseRecordsStr();
-                // console.log(states.RECORDS + ': parsed: ', self._records);
-                if (self._queryCallback) {
-                    self._queryCallback(null, self._records, self._fields);
-                    self._records = null;
-                }
-
-                if (self._queryQueue.length > 0) {
-                    self._execSQLfromQueue();
-                    debug('RECORDS self._queryQueue.length: %d', self._queryQueue.length);
-                } else {
-                    self._queryLock = false;
-
-                    if (self._fEnding) {
-                        if (self._provider.writable) self._provider.write(addCharEndingSuffix(self._endString));
-                        self._fConnected = false;
-                    }
-                }
-                self._setState(states.READY);
-                return;
-            }
-            break;
-        default:
-    }
-
-    // Если строка не обработана, то накапливаем в массиве
-    self._lines_arr.push(line);
-};
-
-Connection.prototype._execSQLfromQueue = function() {
-    const self = this;
-
-    debug('execSQLfromQueue self._queryQueue.length: %d', self._queryQueue.length);
-
-    console.assert(self._queryQueue.length > 0);
-
-    let query = self._queryQueue.pop();
-    self._querySql = query.sql;
-    self._queryCallback = query.callback;
-
-    self._sendSQL(query.sql);
-};
-
-Connection.prototype._sendSQL = function(sql) {
-    debug('send sql: %s', sql);
-    const self = this;
-    self._provider.write(addCharEndingSuffix('SQL'));
-
-    self._provider.write(addCharEndingSuffix(sql));
-    self._provider.write(addCharEndingSuffix(self._endString));
-
-    self._queryLock = true;
-};
-
-Connection.prototype._readLine = function(line) {
-    const self = this;
-    self._step(line);
-
-    debug('line: %s', line.slice(0, 100));
-};
-
-Connection.prototype.query = function (sql, values, callback) {
-    debug('query, sql: %s', sql);
-    const self = this;
-
-    if (arguments.length === 2) {
-        callback = values;
-        values = null;
-    }
-
-    if (sql.slice(-4).toLowerCase() === '.sql') {
-        sql = path.resolve(sql);
-        fs.readFile(sql,'utf8', (err, sqlText) => {
-            if (err) return callback(err);
-
-            self.query(sqlText, values, callback)
-        });
-        return;
-    }
-
-    sql = stripComments(sql);
-    sql = queryFormat(sql, values);
-
-    debug('SQL: %s', sql);
-
-    if (self._fEnding) {
-        let err = new Error('Ending connection can not query');
-        return callback(err);
-    }
-
-    if (self._fConnected) {
-        if (self._queryLock || !self._fReady || self._queryQueue.length > 0) {
-            self._queryQueue.unshift({sql: sql, callback: callback});
-            debug('query enqueue, sql: %s, self._queryQueue.length: %d', sql, self._queryQueue.length);
-        } else {
-            self._querySql = sql;
-            self._queryCallback = callback;
-
-            self._sendSQL(sql);
-        }
-    } else {
-        self._queryQueue.unshift({sql: sql, callback: callback});
-        debug('query enqueue, sql: %s, self._queryQueue.length: %d', sql, self._queryQueue.length);
-
-        if (!self._fConnecting) {
-            self.connect((err) => {
-                if (err) {
-                    debug('ERROR');
-
-                    //FIXME непонятно, можно ли убрать
-                    //self.destroy();
-                }
+                this.emit('close', code);
+                this._fConnected = false;
             });
-        }
-    }
-};
 
-Connection.prototype.destroy = function() {
-    debug('destroy');
-    const self = this;
+        this._rlStream = readline
+            .createInterface({
+                input: this._provider,
+                crlfDelay: Infinity  // 关键：处理 \r\n 为单个换行
+            })
+            .on('line', line => {
+                this._readLine(line);
+            });
 
-    self.destroyed = true;
-
-    if (self._fConnected || self._fConnecting) {
-        self._provider.kill();
-        self._fConnected = false;
-
-        if (self._queryCallback) {
-            let err = new Error('Connection was destroyed while executing sql: ' + self._querySql);
-            self._queryCallback(err);
-        }
-
-        while (self._queryQueue.length > 0) {
-            let query = self._queryQueue.pop();
-            let err = new Error('Connection was destroyed before execution of sql: ' + query.sql);
-            query.callback(err);
-        }
-    }
-};
-
-// gracefully close connection
-Connection.prototype.end = function() {
-    const self = this;
-    debug('end');
-
-    setImmediate(() => {
-        self._fEnding = true;
-        if (self._fConnected) {
-            if (self._queryQueue.length === 0 && !self._queryLock) {
-                if (self._provider.writable) self._provider.write(addCharEndingSuffix(self._endString));
-            }
-        }
-    });
-};
-
-// function NOP() {}
-
-Connection.prototype.connect = function(callback) {
-    debug('connect');
-    const self = this;
-
-    self._fConnecting = true;
-
-    getProvider(
-        {
-            connString: self._connStr,
-            endString: self._endString,
-            errorString: self._errorString
-        },
-        (err, provider) => {
-            debug('getProvider');
-            if (err) return callback(err);
-
-            self._provider = provider;
-
-            self._provider
-                .on('error', err => {
-                    debug('provider error: %s', err.message);
-
-                    //FIXME непонятно, можно ли убрать
-                    //self.emit('error', err);
-                })
-                .on('close', (code, signal) => {
-                    debug('provider close, code: %s, signal: %s', code, signal);
-                    if (code !== 0 && self._lines_arr.length > 0) {
-                        console.log('stdOut:\n', self._lines_arr.join('n'));
-                    }
-                    self.emit('close', code);
-                    self._fConnected = false;
-                });
-
-            self._rlStream = readline
-                .createInterface({
-                    input: self._provider,
-                    crlfDelay: Infinity  // 关键：处理 \r\n 为单个换行
-                })
-                .on('line', line => {
-                    self._readLine(line);
-                });
-
+        return new Promise(resolve => {
             process.nextTick(() => {
                 debug('start');
-                self._fConnecting = false;
-                self._fConnected = true;
+                this._fConnecting = false;
+                this._fConnected = true;
 
-                self.emit('open');
-                callback(null, self);
+                this.emit('open');
+                resolve(this);
             });
-        }
-    );
-};
+        });
+    }
+}
 
 module.exports = Connection;
 
 //TODO options allowComments, multipleStatements, speedUp ( Recordset.GetString() instead of Recordset.MoveNext() );
 
-//TODO кроме records, возвращать fields;
+//TODO 除了 records，返回 fields;
 
-//TODO считать время выполнения запроса;
+//TODO 计算查询执行时间;
 
-//TODO корректную обработку синтаксических ошибок.
-// Сейчас в случае синтаксической ошибки в запросе Сore останавливается, а соответсвующий Сonnection не значет об этом
+//TODO 正确处理语法错误。
+// 目前如果查询中有语法错误，Core 会停止，而对应的 Connection 不知道这一点

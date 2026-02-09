@@ -8,7 +8,7 @@ const svc = new Service({
     script: path.join(__dirname, './server.js')
 });
 
-svc.on('stop', function() {
+svc.on('stop', () => {
     console.log('The service stopped.');
 });
 

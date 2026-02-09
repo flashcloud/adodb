@@ -1,16 +1,16 @@
-"use strict";
+'use strict';
 const path = require('path');
 
-var Service = require('node-windows').Service;
+const Service = require('node-windows').Service;
 
-var svc = new Service({
+const svc = new Service({
     name: 'adodb-server',
-    script: path.join(__dirname,'./server.js')
+    script: path.join(__dirname, './server.js')
 });
 
-svc.on('uninstall',function(){
+svc.on('uninstall', () => {
     console.log('Uninstall complete.');
-    console.log('The service exists: ',svc.exists);
+    console.log('The service exists: ', svc.exists);
 });
 
 svc.uninstall();

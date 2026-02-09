@@ -7,8 +7,7 @@ const debug = require('debug')('adodb:core');
 const fs = require('fs');
 const path = require('path');
 const EventEmitter = require('events').EventEmitter;
-const util = require('util');
-const spawn = require('child_process').spawn;
+const { spawn } = require('child_process');
 
 let script = path.join(__dirname, 'scripts/adodb.js'),
     sysroot = process.env['systemroot'] || process.env['windir'];
@@ -24,61 +23,66 @@ try {
 }
 let cscriptPath = path.join(sysroot, x64 ? 'SysWOW64' : 'System32', 'cscript.exe');
 
-util.inherits(Core, EventEmitter);
-function Core(connString, endString) {
-    if (!(this instanceof Core)) {
-        throw new Error("Can't Core w/o new");
+class Core extends EventEmitter {
+    constructor(connString, endString) {
+        if (!(new.target)) {
+            throw new Error("Can't Core w/o new");
+        }
+
+        console.assert(!!connString && !!endString);
+
+        super();
+
+        this._connString = connString;
+        this._endString = endString;
+        this._coreProc = null;
+
+        this.stdout = null;
+        this.stdin = null;
+        this.stderr = null;
     }
 
-    console.assert(!!connString && !!endString);
+    async spawn() {
+        debug('spawning %s, %s; connString: %s, endString: %s', cscriptPath, script, this._connString, this._endString);
 
-    EventEmitter.call(this);
-    let self = this;
-
-    let coreProc = null;
-
-    self.stdout = null;
-    self.stdin = null;
-    self.stderr = null;
-
-    self.spawn = function(callback) {
-        debug('spawning %s, %s; connString: %s, endString: %s', cscriptPath, script, connString, endString);
-    
-        coreProc = spawn(cscriptPath, ['//E:JScript', '//Nologo', script, connString, endString], {
+        this._coreProc = spawn(cscriptPath, ['//E:JScript', '//Nologo', script, this._connString, this._endString], {
             windowsHide: true,
             stdio: ['pipe', 'pipe', 'pipe']
         });
-    
-        self.stdout = coreProc.stdout;
-        self.stdin = coreProc.stdin;
-        self.stderr = coreProc.stderr;
-    
-        coreProc.on('error', err => {
-            debug('error: %s', err.message);
-            self.emit('error', err);
-        });
-    
-        coreProc.on('close', (code, signal) => {
-            debug('close, code: %s, signal: %s', code, signal);
-            self.emit('close', code, signal);
-        });
-    
-        // Critical fix for Node.js 13.x: delay callback to next tick
-        // This ensures provider can set up listeners before any data arrives
-        process.nextTick(() => {
-            callback(null, self);
-        });
-    };
 
-    self.kill = function() {
+        this.stdout = this._coreProc.stdout;
+        this.stdin = this._coreProc.stdin;
+        this.stderr = this._coreProc.stderr;
+
+        this._coreProc.on('error', err => {
+            debug('error: %s', err.message);
+            this.emit('error', err);
+        });
+
+        this._coreProc.on('close', (code, signal) => {
+            debug('close, code: %s, signal: %s', code, signal);
+            this.emit('close', code, signal);
+        });
+
+        // Critical fix for Node.js 13.x: delay to next tick
+        // This ensures provider can set up listeners before any data arrives
+        return new Promise(resolve => {
+            process.nextTick(() => {
+                resolve(this);
+            });
+        });
+    }
+
+    kill() {
         debug('kill');
         try {
-            coreProc.kill();
+            this._coreProc.kill();
         } catch (err) {}
-    };
-    self.killed = function() {
-        return coreProc.killed;
-    };
+    }
+
+    killed() {
+        return this._coreProc.killed;
+    }
 }
 
 module.exports = Core;

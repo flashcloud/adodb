@@ -8,7 +8,7 @@ const svc = new Service({
     script: path.join(__dirname, './server.js')
 });
 
-svc.on('start', function() {
+svc.on('start', () => {
     console.log('The service started.');
 });
 

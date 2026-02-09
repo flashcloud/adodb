@@ -9,10 +9,10 @@ const svc = new Service({
 });
 
 svc
-    .on('start', function() {
+    .on('start', () => {
         console.log('The service started.');
     })
-    .on('stop', function() {
+    .on('stop', () => {
         console.log('The service stopped.');
     });
 

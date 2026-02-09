@@ -20,7 +20,7 @@ describe('Provider', function () {
         assert.deepEqual(parseConnStr(cStr), {remote: true, host:'localhost', port:4023});
     });
 
-    it('通过工厂创建并销毁 Provider-local 实例', function (done) {
+    it('通过工厂创建并销毁 Provider-local 实例', async function () {
         const getProvider = require('../provider');
 
         let options = {
@@ -29,19 +29,13 @@ describe('Provider', function () {
             errorString: errorStr
         };
 
-        getProvider(options, (err, provider) => {
-            if (err) return done(err);
+        const provider = await getProvider(options);
+        provider.kill();
 
-            provider.kill();
-            if (provider.killed()) {
-                done(null)
-            } else {
-                done(new Error())
-            }
-        })
+        assert.ok(provider.killed(), 'Provider should be killed');
     });
 
-    it('Provider-local 实例在创建时向流中写入正确的 connStr 和 endStr', function (done) {
+    it('Provider-local 实例在创建时向流中写入正确的 connStr 和 endStr', async function () {
         const getProvider = require('../provider');
         const readline = require('readline');
 
@@ -51,20 +45,16 @@ describe('Provider', function () {
             errorString: errorStr
         };
 
-        getProvider(options, (err, provider) => {
-            if (err) return done(err);
+        const provider = await getProvider(options);
 
+        return new Promise((resolve, reject) => {
             const rl = readline.createInterface({
                 input: provider
             });
 
-            rl.on('line', (line) => {
-                if (parseProviderOut(line)) close();
-            });
-
             let provConnStr = null, provEndStr = null;
 
-            function parseProviderOut (line) {
+            function parseProviderOut(line) {
                 if (line.slice(0, 9) === 'connStr: ') {
                     provConnStr = line.slice('connStr: '.length).trim();
                 } else if (line.slice(0, 8) === 'endStr: ') {
@@ -74,16 +64,19 @@ describe('Provider', function () {
                 return (!!provConnStr && !!provEndStr);
             }
 
-            function close(){
+            function close() {
                 provider.kill();
-                if (provider.killed() && (provConnStr === connStr) && (provEndStr === endStr) ) {
-                    done(null)
+                if (provider.killed() && (provConnStr === connStr) && (provEndStr === endStr)) {
+                    resolve();
                 } else {
-                    done(new Error())
+                    reject(new Error('Provider output mismatch'));
                 }
             }
 
-        })
+            rl.on('line', (line) => {
+                if (parseProviderOut(line)) close();
+            });
+        });
     });
 
 });
