@@ -7,13 +7,13 @@ const mdbPath = path.resolve(__dirname + '/media/Northwind2003.mdb');
 const connStr = 'Provider=Microsoft.Jet.OLEDB.4.0;Data Source=' + mdbPath;
 
 describe('Pool', function() {
-    it('Pool создается и уничтожается', function() {
+    it('Pool 被创建和销毁', function() {
         const Pool = require('../pool/pool');
         let pool = new Pool(connStr);
         pool.end();
     });
 
-    it('Pool выполняет sql-запрос', function(done) {
+    it('Pool 执行 sql 查询', function(done) {
         const Pool = require('../pool/pool');
         let pool = new Pool(connStr);
         pool.query('SELECT 1+1 AS NUM;', (err, data) => {
@@ -33,7 +33,7 @@ describe('Pool', function() {
         });
     });
 
-    it('Правильно выполняется SQL-запрос с integer, string, float, boolean', function(done) {
+    it('正确执行带有 integer, string, float, boolean 的 SQL 查询', function(done) {
         const Pool = require('../pool/pool');
         let pool = new Pool(connStr);
 
@@ -57,9 +57,9 @@ describe('Pool', function() {
         );
     });
 
-//TODO проверку запросов, возвращающих null
+//TODO 检查返回 null 的查询
 
-    it('Правильно выполняется SQL-запрос с datetime', function(done) {
+    it('正确执行带有 datetime 的 SQL 查询', function(done) {
         const Pool = require('../pool/pool');
         let pool = new Pool(connStr);
 
@@ -77,7 +77,7 @@ describe('Pool', function() {
         });
     });
 
-    it('Правильно обрабатываются синтаксические ошибки в SQL-запросе', function(done) {
+    it('正确处理 SQL 查询中的语法错误', function(done) {
         const Pool = require('../pool/pool');
         let pool = new Pool(connStr);
 
@@ -96,7 +96,7 @@ describe('Pool', function() {
         });
     });
 
-    it('Правильно выполняется SQL-запрос из файла', function(done) {
+    it('正确执行来自文件的 SQL 查询', function(done) {
         const Pool = require('../pool/pool');
         let pool = new Pool(connStr);
 
@@ -119,7 +119,7 @@ describe('Pool', function() {
         });
     });
 
-    it('Правильно выполняется подстановка именованных параметров', function(done) {
+    it('正确执行命名参数替换', function(done) {
         const Pool = require('../pool/pool');
         let pool = new Pool(connStr);
 
@@ -151,7 +151,7 @@ describe('Pool', function() {
         );
     });
 
-    it('Правильно выполняется SQL-запрос с комментариями', function(done) {
+    it('正确执行带注释的 SQL 查询', function(done) {
         const Pool = require('../pool/pool');
         let pool = new Pool(connStr);
 

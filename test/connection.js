@@ -7,7 +7,7 @@ const mdbPath = path.resolve(__dirname + '/media/Northwind2003.mdb');
 const connStr = 'Provider=Microsoft.Jet.OLEDB.4.0;Data Source=' + mdbPath;
 
 describe('Connection', function() {
-    it('parseDateFn правильно парсит даты', function() {
+    it('parseDateFn 正确解析日期', function() {
         const parseDateFn = require('../connection/speedup/parseDateFn');
 
         let d1, d2;
@@ -45,7 +45,7 @@ describe('Connection', function() {
         assert.equal(d1, d2);
     });
 
-    it('Connection создается и уничтожается', function() {
+    it('Connection 被创建和销毁', function() {
         const Connection = require('../connection/connection');
 
         let connection = new Connection(connStr);
@@ -57,7 +57,7 @@ describe('Connection', function() {
         });
     });
 
-    it('Правильно выполняется SQL-запрос с integer, string, float, boolean', function(done) {
+    it('正确执行带有 integer, string, float, boolean 的 SQL 查询', function(done) {
         const Connection = require('../connection/connection');
 
         let connection = new Connection(connStr);
@@ -82,7 +82,7 @@ describe('Connection', function() {
         );
     });
 
-    it('Правильно выполняется SQL-запрос с boolean', function(done) {
+    it('正确执行带有 boolean 的 SQL 查询', function(done) {
         const Connection = require('../connection/connection');
 
         let connection = new Connection(connStr);
@@ -113,7 +113,7 @@ describe('Connection', function() {
         );
     });
 
-    it('Правильно выполняется SQL-запрос с datetime', function(done) {
+    it('正确执行带有 datetime 的 SQL 查询', function(done) {
         const Connection = require('../connection/connection');
 
         let connection = new Connection(connStr);
@@ -132,19 +132,19 @@ describe('Connection', function() {
         });
     });
 
-    it('Правильно выполняется SQL-запрос с null', function(done) {
+    it('正确执行带有 null 的 SQL 查询', function(done) {
         const Connection = require('../connection/connection');
 
         let connection = new Connection(connStr);
 
         connection.query(
-            // Если запрос возвращает значение логического выражения, то тип поля будет adSmallInt (2), а не adBoolean (11).
-            // Но если запрос возвращает значение логического поля, то тип поля будет adBoolean (11)
+            // 如果查询返回逻辑表达式的值，则字段类型将是 adSmallInt (2)，而不是 adBoolean (11)。
+            // 但是如果查询返回逻辑字段的值，则字段类型将是 adBoolean (11)
             //
-            // Для числового поля в случае значения NULL возвращается значение 0.
-            // Для текстового поля в случае значения NULL возвращается пустая строка
+            // 对于数值字段，如果值为 NULL，则返回值 0。
+            // 对于文本字段，如果值为 NULL，则返回空字符串
             //
-            // Типы полей: https://msdn.microsoft.com/ru-ru/library/ms675318(v=vs.85).aspx
+            // 字段类型: https://msdn.microsoft.com/ru-ru/library/ms675318(v=vs.85).aspx
 
             'SELECT cr.CustomerID, cr.EmployeeID, ord.OrderID AS NumericNull, ord.OrderDate AS DateNull, ord.ShipName AS StringNull, IIF(ord.OrderID IS NULL, FALSE, TRUE) AS booleanValue FROM Orders ord RIGHT JOIN (SELECT CustomerID, EmployeeID FROM Customers, Employees) cr  ON (ord.CustomerID = cr.Customers.CustomerID AND ord.EmployeeID = cr.EmployeeID) WHERE cr.CustomerID="ALFKI" AND cr.EmployeeID IN (1, 2) ORDER BY cr.CustomerID, cr.EmployeeID;',
             (err, data, fields) => {
@@ -187,7 +187,7 @@ describe('Connection', function() {
         );
     });
 
-    it('Правильно обрабатываются синтаксические ошибки в SQL-запросе', function(done) {
+    it('正确处理 SQL 查询中的语法错误', function(done) {
         const Connection = require('../connection/connection');
 
         let connection = new Connection(connStr);
@@ -207,7 +207,7 @@ describe('Connection', function() {
         });
     });
 
-    it('Правильно выполняется SQL-запрос из файла', function(done) {
+    it('正确执行来自文件的 SQL 查询', function(done) {
         const Connection = require('../connection/connection');
         let connection = new Connection(connStr);
 
@@ -230,7 +230,7 @@ describe('Connection', function() {
         });
     });
 
-    it('Правильно выполняется подстановка именованных параметров', function(done) {
+    it('正确执行命名参数替换', function(done) {
         const Connection = require('../connection/connection');
         let connection = new Connection(connStr);
 
