@@ -1,7 +1,7 @@
 {
-  "name": "adodb",
+  "name": "adodb-es6",
   "version": "0.1.0",
-  "description": "Package for executing SQL queries to MS Access databases intended for use on Windows XP and later. In the client-server mode, the client part can be used without restriction of the operating system.",
+  "description": "Package for executing SQL queries to MS Access databases intended for use on Windows XP and later. In the client-server mode, the client part can be used without restriction of the operating system. Fork from https://github.com/decemberster/adodb",
   "main": "index.js",
   "scripts": {
     "test": "mocha",
@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/decemberster/adodb.git"
+    "url": "git+https://github.com/flashcloud/adodb.git"
   },
   "keywords": [
     "mdb",
@@ -24,9 +24,9 @@
   "author": "",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/decemberster/adodb/issues"
+    "url": "https://github.com/flashcloud/adodb/issues"
   },
-  "homepage": "https://github.com/decemberster/adodb#readme",
+  "homepage": "https://github.com/flashcloud/adodb#readme",
   "devDependencies": {
     "chai": "^3.5.0",
     "mocha": "^3.1.2"
